@@ -1,0 +1,8 @@
+{
+  "name": "INSANUS EDUCACIONAL (V1.1) - SISTEMA DE ENSINO",
+  "description": "Uma plataforma futurista de gestão de estudos para concursos, com foco em gamificação e ciclos de estudo inteligentes.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
