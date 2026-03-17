@@ -17,10 +17,10 @@ async function startServer() {
 
   // Webhook da Ticto
   app.post("/api/webhooks/ticto", async (req, res) => {
+    const payload = req.body;
+    const status = payload.status || payload.transaction_status;
+    
     try {
-      const payload = req.body;
-      const status = payload.status || payload.transaction_status;
-      
       if (status === 'approved' || status === 'paid') {
         const customerData = {
           name: payload.customer?.name || payload.client_name || '',
@@ -29,33 +29,30 @@ async function startServer() {
         };
         const tictoProductId = payload.product?.id || payload.product_id || '';
 
-        if (!customerData.email || !tictoProductId) {
-          console.error('Payload inválido: E-mail do cliente ou ID do produto ausentes.', payload);
-          res.status(400).send('Bad Request: Missing required fields');
-          return;
+        if (customerData.email && tictoProductId) {
+          await provisionTictoPurchase(customerData, tictoProductId);
+        } else {
+          console.warn('[TICTO WEBHOOK] Dados insuficientes para provisionamento:', { email: customerData.email, productId: tictoProductId });
         }
-
-        await provisionTictoPurchase(customerData, tictoProductId);
       } else if (status === 'refunded' || status === 'chargeback' || status === 'canceled' || status === 'overdue') {
         const customerEmail = payload.customer?.email || payload.client_email || '';
         const tictoProductId = payload.product?.id || payload.product_id || '';
 
-        if (!customerEmail || !tictoProductId) {
-          console.error('Payload inválido para revogação: E-mail do cliente ou ID do produto ausentes.', payload);
-          res.status(400).send('Bad Request: Missing required fields');
-          return;
+        if (customerEmail && tictoProductId) {
+          await revokeTictoPurchase(customerEmail, tictoProductId);
+        } else {
+          console.warn('[TICTO WEBHOOK] Dados insuficientes para revogação:', { email: customerEmail, productId: tictoProductId });
         }
-
-        await revokeTictoPurchase(customerEmail, tictoProductId);
       } else {
-        console.log(`Webhook recebido com status ignorado: ${status}`);
+        console.log(`[TICTO WEBHOOK] Status ignorado ou de teste: ${status}`);
       }
-
-      res.status(200).send('OK');
     } catch (error) {
-      console.error('Erro ao processar webhook da Ticto:', error);
-      res.status(500).send('Internal Server Error');
+      // Blindagem: Logamos o erro mas não retornamos 500 para a Ticto
+      console.error('[TICTO WEBHOOK] Erro interno processando webhook:', error);
     }
+
+    // OBRIGATÓRIO: Retorno sempre 200 OK para validação da Ticto
+    return res.status(200).json({ received: true, message: "Webhook processado" });
   });
 
   // Vite middleware for development
