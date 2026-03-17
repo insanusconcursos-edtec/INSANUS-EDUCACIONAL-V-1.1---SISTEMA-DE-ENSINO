@@ -5,6 +5,8 @@ import { classService } from '../../services/classService';
 import { curriculumService } from '../../services/curriculumService';
 import { teacherService } from '../../services/teacherService';
 import { classScheduleService } from '../../services/classScheduleService';
+import { getStudentsByClass } from '../../services/studentService';
+import { classroomService } from '../../services/classroomService';
 import { Class } from '../../types/class';
 import { Topic, Subject, Module } from '../../types/curriculum';
 import { Teacher } from '../../types/teacher';
@@ -29,6 +31,8 @@ const PresentialClassManager: React.FC = () => {
   const [scheduleEvents, setScheduleEvents] = useState<ClassScheduleEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+  const [studentsOverview, setStudentsOverview] = useState<any[]>([]);
+  const [classroomOverview, setClassroomOverview] = useState<any>(null);
 
   // Deep Linking: Sync tab from URL
   useEffect(() => {
@@ -78,6 +82,41 @@ const PresentialClassManager: React.FC = () => {
     fetchData();
   }, [classId]);
 
+  useEffect(() => {
+    const fetchOverviewExtraData = async () => {
+      if (!currentClass?.id) return; 
+      
+      try {
+        const fetchedStudents = await getStudentsByClass(currentClass.id);
+        setStudentsOverview(fetchedStudents);
+        
+        if (currentClass.classroomId) {
+          const room = await classroomService.getClassroomById(currentClass.classroomId);
+          setClassroomOverview(room);
+        }
+      } catch (error) {
+        console.error("Erro ao buscar dados extras da visão geral", error);
+      }
+    };
+
+    fetchOverviewExtraData();
+  }, [currentClass?.id, currentClass?.classroomId]);
+
+  const overviewMetrics = useMemo(() => {
+    const planned = currentClass?.totalMeetings || 0;
+    const scheduled = scheduleEvents?.length || 0;
+    const completed = scheduleEvents?.filter((e: any) => e.status === 'COMPLETED').length || 0;
+
+    const totalSt = studentsOverview.length;
+    const regularSt = studentsOverview.filter(s => !s.classAccess?.isScholarship).length;
+    const scholarshipSt = studentsOverview.filter(s => s.classAccess?.isScholarship).length;
+
+    const capacity = classroomOverview?.capacity || (currentClass as any)?.capacity || 0;
+    const available = Math.max(0, capacity - totalSt);
+
+    return { planned, scheduled, completed, totalSt, regularSt, scholarshipSt, capacity, available };
+  }, [currentClass, scheduleEvents, studentsOverview, classroomOverview]);
+
   if (loading) {
     return <div className="flex items-center justify-center h-screen text-white">Carregando...</div>;
   }
@@ -90,20 +129,69 @@ const PresentialClassManager: React.FC = () => {
     switch (activeTab) {
       case 'overview':
         return (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in duration-500">
-             {/* Stats Cards Placeholder */}
-             <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-xl">
-                <h3 className="text-zinc-400 text-sm font-bold uppercase mb-2">Total de Encontros</h3>
-                <p className="text-3xl font-bold text-white">{currentClass.totalMeetings}</p>
-             </div>
-             <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-xl">
-                <h3 className="text-zinc-400 text-sm font-bold uppercase mb-2">Alunos Matriculados</h3>
-                <p className="text-3xl font-bold text-white">0/50</p>
-             </div>
-             <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-xl">
-                <h3 className="text-zinc-400 text-sm font-bold uppercase mb-2">Status</h3>
-                <p className="text-3xl font-bold text-white">{currentClass.status}</p>
-             </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6 animate-in fade-in duration-500">
+            {/* Card 1: Encontros */}
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 flex flex-col gap-4 shadow-lg">
+              <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                Encontros da Turma
+              </h3>
+              <div className="flex flex-col gap-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-zinc-400">Previstos no Edital:</span> 
+                  <strong className="text-white text-xl">{overviewMetrics.planned}</strong>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-zinc-400">Agendados:</span> 
+                  <strong className="text-blue-400 text-xl">{overviewMetrics.scheduled}</strong>
+                </div>
+                <div className="flex justify-between items-center border-t border-zinc-800 pt-3">
+                  <span className="text-zinc-400 font-medium">Já Ministrados:</span> 
+                  <strong className="text-green-500 text-xl">{overviewMetrics.completed}</strong>
+                </div>
+              </div>
+            </div>
+
+            {/* Card 2: Alunos Matriculados */}
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 flex flex-col gap-4 shadow-lg">
+              <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                Perfil dos Alunos
+              </h3>
+              <div className="flex flex-col gap-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-zinc-400">Total Matriculados:</span> 
+                  <strong className="text-white text-3xl">{overviewMetrics.totalSt}</strong>
+                </div>
+                <div className="flex justify-between items-center border-t border-zinc-800 pt-3">
+                  <span className="text-zinc-400">Regulares:</span> 
+                  <strong className="text-zinc-100 text-lg">{overviewMetrics.regularSt}</strong>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-zinc-400">Bolsistas:</span> 
+                  <strong className="text-blue-400 text-lg">{overviewMetrics.scholarshipSt}</strong>
+                </div>
+              </div>
+            </div>
+
+            {/* Card 3: Ocupação e Vagas */}
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 flex flex-col gap-4 shadow-lg">
+              <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                Ocupação da Sala
+              </h3>
+              <div className="flex flex-col gap-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-zinc-400">Capacidade Física:</span> 
+                  <strong className="text-white text-xl">{overviewMetrics.capacity || 'N/D'}</strong>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-zinc-400">Vagas Preenchidas:</span> 
+                  <strong className="text-red-400 text-xl">{overviewMetrics.totalSt}</strong>
+                </div>
+                <div className="flex justify-between items-center border-t border-zinc-800 pt-3">
+                  <span className="text-zinc-400 font-medium">Vagas Disponíveis:</span> 
+                  <strong className="text-green-500 text-xl">{overviewMetrics.capacity ? overviewMetrics.available : 'N/D'}</strong>
+                </div>
+              </div>
+            </div>
           </div>
         );
       case 'remuneration':

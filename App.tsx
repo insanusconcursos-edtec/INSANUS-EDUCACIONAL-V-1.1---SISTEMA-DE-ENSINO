@@ -34,6 +34,7 @@ import {
 } from './pages/student/StudentPages';
 import { StudentHome } from './pages/student/StudentHome';
 import StudentConfigPage from './pages/student/StudentConfigPage';
+import ProductsManager from './pages/admin/products/ProductsManager';
 
 // Wrapper to handle root redirection based on role
 const RootRedirect = () => {
@@ -69,6 +70,8 @@ const App: React.FC = () => {
             <Route path="planos" element={<PlansPage />} />
             <Route path="plans/:planId" element={<PlanEditor />} />
             
+            <Route path="products" element={<ProductsManager />} />
+
             <Route path="cursos" element={<AdminCoursesTab />} /> {/* Nova Rota */}
 
             <Route path="presencial" element={<PresentialClassesPage />} /> {/* Nova Rota Presencial */}

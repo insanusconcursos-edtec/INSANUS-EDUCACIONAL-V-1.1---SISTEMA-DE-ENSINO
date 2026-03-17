@@ -828,12 +828,13 @@ export const rescheduleOverdueTasks = async (userId: string, planId: string, rou
       existing.duration = existing.calculatedDuration;
       if (!existing.part && item.part) existing.part = item.part;
       
-      if (item.videos) existing.videos = [...(existing.videos || []), ...item.videos];
-      if (item.files) existing.files = [...(existing.files || []), ...item.files];
-      if (item.links) existing.links = [...(existing.links || []), ...item.links];
-      if (item.mindMap) existing.mindMap = [...(existing.mindMap || []), ...item.mindMap];
-      if (item.flashcards) existing.flashcards = [...(existing.flashcards || []), ...item.flashcards];
-      if (item.questions) existing.questions = [...(existing.questions || []), ...item.questions];
+      // Preservar conteúdos de todas as partes fundidas
+      if (item.videos?.length) existing.videos = [...(existing.videos || []), ...item.videos];
+      if (item.files?.length) existing.files = [...(existing.files || []), ...item.files];
+      if (item.links?.length) existing.links = [...(existing.links || []), ...item.links];
+      if (item.mindMap?.length) existing.mindMap = [...(existing.mindMap || []), ...item.mindMap];
+      if (item.flashcards?.length) existing.flashcards = [...(existing.flashcards || []), ...item.flashcards];
+      if (item.questions?.length) existing.questions = [...(existing.questions || []), ...item.questions];
     } else {
       mergedTasksMap.set(baseId, { ...item });
     }
@@ -844,7 +845,6 @@ export const rescheduleOverdueTasks = async (userId: string, planId: string, rou
   const currentDate = new Date(todayStr + 'T00:00:00');
   if (preserveToday) currentDate.setDate(currentDate.getDate() + 1);
   
-  let currentDayCapacity = safeRoutine[currentDate.getDay()] || 0;
   const newFutureSchedules = new Map<string, any[]>();
 
   // 3. REINSERIR AS METAS FIXAS NO CALENDÁRIO
@@ -855,6 +855,17 @@ export const rescheduleOverdueTasks = async (userId: string, planId: string, rou
     }
     newFutureSchedules.get(originalDate)!.push(fixedTask);
   }
+
+  // Função auxiliar para calcular capacidade real do dia (Routine - FixedTasks)
+  const getRealDayCapacity = (date: Date) => {
+    const dStr = date.toISOString().split('T')[0];
+    const baseCap = safeRoutine[date.getDay()] || 0;
+    const fixedItems = newFutureSchedules.get(dStr) || [];
+    const fixedDuration = fixedItems.reduce((acc, item) => acc + (item.calculatedDuration || item.duration || 0), 0);
+    return Math.max(0, baseCap - fixedDuration);
+  };
+
+  let currentDayCapacity = getRealDayCapacity(currentDate);
 
   // Loop de redistribuição (Empuxo)
   for (const task of tasksToShift) {
@@ -869,7 +880,7 @@ export const rescheduleOverdueTasks = async (userId: string, planId: string, rou
     delete task.isSplitContinuity;
 
     let remainingDuration = task.calculatedDuration || task.duration || 30;
-    const originalTotalDuration = task.totalDuration || task.calculatedDuration || task.duration || remainingDuration; // Guarda o tempo original para comparar na fusão
+    const originalTotalDuration = task.totalDuration || task.calculatedDuration || task.duration || remainingDuration; 
     const isSplittableType = ['material', 'questions', 'law', 'lesson', 'questões', 'questoes', 'lei_seca', 'lei seca', 'pdf'].includes(normalizedType);
     let lastAllocatedDate: string | null = null;
 
@@ -887,7 +898,7 @@ export const rescheduleOverdueTasks = async (userId: string, planId: string, rou
 
       while (currentDayCapacity <= 0 || hasSimulado) {
         currentDate.setDate(currentDate.getDate() + 1);
-        currentDayCapacity = safeRoutine[currentDate.getDay()] || 0;
+        currentDayCapacity = getRealDayCapacity(currentDate);
         dStr = currentDate.toISOString().split('T')[0];
         hasSimulado = newFutureSchedules.get(dStr)?.some(i => i.type?.toLowerCase() === 'simulado');
       }

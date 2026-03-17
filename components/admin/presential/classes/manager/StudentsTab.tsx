@@ -1,6 +1,6 @@
 /* eslint-disable react/prop-types */
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, MessageCircle, User, Star, Loader2 } from 'lucide-react';
+import { Search, MessageCircle, User, Star, Loader2, RefreshCw } from 'lucide-react';
 import { getStudentsByClass } from '../../../../../services/studentService';
 
 interface Props {
@@ -11,6 +11,7 @@ export const StudentsTab: React.FC<Props> = ({ classId }) => {
   const [students, setStudents] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   useEffect(() => {
     const fetchStudents = async () => {
@@ -28,7 +29,7 @@ export const StudentsTab: React.FC<Props> = ({ classId }) => {
     };
 
     if (classId) fetchStudents();
-  }, [classId]);
+  }, [classId, refreshTrigger]);
 
   // Filtra e divide as listas (Memoizado para performance)
   const { regularStudents, scholarshipStudents } = useMemo(() => {
@@ -50,7 +51,7 @@ export const StudentsTab: React.FC<Props> = ({ classId }) => {
   // Componente interno para renderizar o Card do Aluno
   const StudentCard = ({ student, isScholarship }: { student: any, isScholarship: boolean }) => {
     const access = student.classAccess;
-    const phoneDigits = student.phone?.replace(/\D/g, '');
+    const phoneDigits = (student.whatsapp || student.phone)?.replace(/\D/g, '');
     
     return (
       <div className={`p-4 rounded-xl border flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition ${isScholarship ? 'bg-blue-900/10 border-blue-900/50 hover:border-blue-700' : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700'}`}>
@@ -80,10 +81,14 @@ export const StudentsTab: React.FC<Props> = ({ classId }) => {
 
         {/* Dados de Acesso e Ações */}
         <div className="flex flex-col md:items-end gap-2 w-full md:w-auto">
-          <div className="text-xs text-zinc-500 grid grid-cols-2 md:text-right gap-x-4 gap-y-1 bg-black/20 p-2 rounded-lg">
-            <span>Início: <strong className="text-zinc-300">{access?.startDate ? new Date(access.startDate).toLocaleDateString('pt-BR') : 'N/A'}</strong></span>
-            <span>Expira: <strong className="text-zinc-300">{access?.endDate ? new Date(access.endDate).toLocaleDateString('pt-BR') : 'N/A'}</strong></span>
-            <span className="col-span-2">Acesso: <strong className="text-zinc-300">{access?.days || 0} dias</strong></span>
+          <div className="text-xs text-gray-400 grid grid-cols-2 md:text-right gap-x-4 gap-y-1 bg-gray-900/50 p-2 rounded-lg">
+            <span>Início: <strong className="text-gray-300">
+              {access?.startDate ? (typeof access.startDate.toDate === 'function' ? access.startDate.toDate().toLocaleDateString('pt-BR') : new Date(access.startDate).toLocaleDateString('pt-BR')) : 'N/A'}
+            </strong></span>
+            <span>Expira: <strong className="text-gray-300">
+              {access?.endDate ? (typeof access.endDate.toDate === 'function' ? access.endDate.toDate().toLocaleDateString('pt-BR') : new Date(access.endDate).toLocaleDateString('pt-BR')) : 'N/A'}
+            </strong></span>
+            <span className="col-span-2">Acesso: <strong className="text-gray-300">{access?.days || 0} dias</strong></span>
           </div>
           
           {phoneDigits && (
@@ -91,7 +96,7 @@ export const StudentsTab: React.FC<Props> = ({ classId }) => {
               href={`https://wa.me/55${phoneDigits}`} 
               target="_blank" 
               rel="noopener noreferrer"
-              className="mt-1 flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition w-full md:w-auto"
+              className="mt-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-lg transition w-full md:w-auto"
             >
               <MessageCircle size={14} />
               WhatsApp
@@ -114,7 +119,15 @@ export const StudentsTab: React.FC<Props> = ({ classId }) => {
       {/* Cabeçalho e Pesquisa */}
       <div className="flex flex-col md:flex-row items-center justify-between gap-4">
         <h2 className="text-xl font-bold text-white flex items-center gap-2">
-          <User className="text-brand-red" /> Alunos Matriculados ({students.length})
+          <User className="text-red-500" /> Alunos Matriculados ({students.length})
+          <button 
+            onClick={() => setRefreshTrigger(prev => prev + 1)} 
+            disabled={isLoading}
+            className="ml-2 p-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-md text-gray-400 hover:text-white transition disabled:opacity-50"
+            title="Sincronizar Lista"
+          >
+            <RefreshCw size={16} className={isLoading ? 'animate-spin text-red-500' : ''} />
+          </button>
         </h2>
         <div className="relative w-full md:w-96">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" size={18} />

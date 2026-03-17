@@ -48,6 +48,8 @@ const StudentConfigPage: React.FC = () => {
 
   // Form State
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+  const [initialPlanId, setInitialPlanId] = useState<string | null>(null);
+  const [showPlanChangeModal, setShowPlanChangeModal] = useState(false);
   const [isPlanPaused, setIsPlanPaused] = useState(false); // New State
   
   const [studyProfile, setStudyProfile] = useState<StudyProfile>({
@@ -74,7 +76,10 @@ const StudentConfigPage: React.FC = () => {
 
         // Pre-fill if exists
         if (currentConfig) {
-          if (currentConfig.currentPlanId) setSelectedPlanId(currentConfig.currentPlanId);
+          if (currentConfig.currentPlanId) {
+            setSelectedPlanId(currentConfig.currentPlanId);
+            setInitialPlanId(currentConfig.currentPlanId || null);
+          }
           setIsPlanPaused(currentConfig.isPlanPaused || false); // Sync Pause State
           
           if (currentConfig.studyProfile) {
@@ -134,6 +139,15 @@ const StudentConfigPage: React.FC = () => {
   const calculateWeeklyHours = () => {
     const totalMinutes = (Object.values(routine) as number[]).reduce((acc, curr) => acc + curr, 0);
     return (totalMinutes / 60).toFixed(1);
+  };
+
+  const checkPlanChangeAndSave = () => {
+    // Se o aluno já tinha um plano e agora selecionou um diferente
+    if (initialPlanId && selectedPlanId && initialPlanId !== selectedPlanId) {
+      setShowPlanChangeModal(true); // Levanta o aviso
+    } else {
+      handleSave(); // Fluxo normal, não houve troca
+    }
   };
 
   const handleSave = async () => {
@@ -579,7 +593,7 @@ const StudentConfigPage: React.FC = () => {
       {/* FLOATING ACTION BUTTON */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-zinc-950 via-zinc-950/90 to-transparent z-50 flex justify-center pointer-events-none">
         <button 
-          onClick={handleSave}
+          onClick={checkPlanChangeAndSave}
           disabled={!selectedPlanId || saving}
           className="pointer-events-auto shadow-2xl shadow-brand-red/40 bg-brand-red hover:bg-red-600 text-white text-sm font-black uppercase tracking-widest py-4 px-10 rounded-full transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-3"
         >
@@ -594,6 +608,34 @@ const StudentConfigPage: React.FC = () => {
           )}
         </button>
       </div>
+
+      {showPlanChangeModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-md p-6 flex flex-col gap-4 shadow-2xl">
+            <h3 className="text-xl font-bold text-white">Alterar Plano de Estudos?</h3>
+            <p className="text-gray-400 text-sm">
+              Você está alterando seu plano de estudos. O plano atual será <strong className="text-yellow-500">PAUSADO</strong> (mantendo seu histórico e progresso) e um novo cronograma será gerado para o plano recém-selecionado.
+            </p>
+            <div className="flex justify-end gap-3 mt-4">
+              <button
+                onClick={() => setShowPlanChangeModal(false)}
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-lg transition"
+              >
+                CANCELAR
+              </button>
+              <button
+                onClick={() => {
+                  setShowPlanChangeModal(false);
+                  handleSave(); // Chama a função original que fará a limpeza e o agendamento
+                }}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg transition"
+              >
+                CONFIRMAR E GERAR
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

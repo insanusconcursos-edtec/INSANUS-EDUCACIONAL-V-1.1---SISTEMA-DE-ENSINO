@@ -17,6 +17,11 @@ const AdminLayout: React.FC = () => {
         items.push({ label: 'PLANOS', path: '/admin/planos' });
     }
 
+    // 1.5 PRODUTOS (Integração Ticto)
+    if (isAdmin) {
+        items.push({ label: 'PRODUTOS', path: '/admin/products' });
+    }
+
     // 2. CURSOS ONLINE (Novo)
     // Disponível para admin. Futuramente pode-se adicionar permissão específica 'courses'.
     if (isAdmin) {

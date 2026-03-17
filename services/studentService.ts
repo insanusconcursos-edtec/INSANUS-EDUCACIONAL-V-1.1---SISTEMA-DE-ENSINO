@@ -674,7 +674,7 @@ export const getStudentsByClass = async (classId: string) => {
     const accesses = (userData as any).access || [];
     
     // Procura se o aluno tem um acesso válido para esta turma presencial
-    const classAccess = accesses.find((a: any) => a.targetId === classId && a.type === 'presential_class');
+    const classAccess = accesses.find((a: any) => a.targetId === classId && a.type === 'presential_class' && a.isActive !== false);
     
     if (classAccess) {
       enrolledStudents.push({
