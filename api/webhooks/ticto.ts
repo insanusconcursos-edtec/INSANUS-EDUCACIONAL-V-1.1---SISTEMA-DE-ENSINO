@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { provisionTictoPurchase, revokeTictoPurchase } from '../../src/backend/services/provisioningService';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).end();
@@ -19,10 +20,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ received: true, message: "Teste Ticto aprovado com sucesso!" });
     }
 
-    // 3. Importação Dinâmica (Só carrega as bibliotecas pesadas se for venda real)
+    // 3. Importação Estática (Garantindo resolução de path na Vercel)
     // O caminho é relativo ao arquivo /api/webhooks/ticto.ts
-    // ../../../src/backend/services/provisioningService
-    const { provisionTictoPurchase, revokeTictoPurchase } = await import('../../../src/backend/services/provisioningService');
+    // ../../src/backend/services/provisioningService
 
     const { status, customer, item } = payload;
     

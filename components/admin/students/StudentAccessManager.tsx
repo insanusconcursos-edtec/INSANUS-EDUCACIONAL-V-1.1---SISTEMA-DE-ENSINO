@@ -3,7 +3,7 @@ import {
   X, Clock, Trash2, Plus, 
   CheckCircle, Layers, GraduationCap,
   Loader2, PlayCircle, Users, Radio,
-  ArrowLeft
+  ArrowLeft, Package
 } from 'lucide-react';
 import { 
   Student, 
@@ -21,6 +21,9 @@ import { liveEventService } from '../../../services/liveEventService';
 import { Class } from '../../../types/class';
 import { OnlineCourse } from '../../../types/course';
 import { LiveEvent } from '../../../types/liveEvent';
+import { TictoProduct } from '../../../types/product';
+import { db } from '../../../services/firebase';
+import { doc, writeBatch, Timestamp, collection, getDocs } from 'firebase/firestore';
 import ConfirmationModal from '../../ui/ConfirmationModal';
 
 interface StudentAccessManagerProps {
@@ -29,7 +32,7 @@ interface StudentAccessManagerProps {
   onUpdate: () => void; // Trigger refresh on parent
 }
 
-type ModalType = 'ADD_PLAN' | 'ADD_SIMULADO' | 'ADD_COURSE' | 'ADD_PRESENTIAL' | 'ADD_LIVE_EVENT' | 'EXTEND' | null;
+type ModalType = 'ADD_PLAN' | 'ADD_SIMULADO' | 'ADD_COURSE' | 'ADD_PRESENTIAL' | 'ADD_LIVE_EVENT' | 'ADD_PRODUCT' | 'EXTEND' | null;
 
 const StudentAccessManager: React.FC<StudentAccessManagerProps> = ({ student: initialStudent, onClose, onUpdate }) => {
   // State
@@ -39,7 +42,7 @@ const StudentAccessManager: React.FC<StudentAccessManagerProps> = ({ student: in
   const [courses, setCourses] = useState<OnlineCourse[]>([]);
   const [presentialClasses, setPresentialClasses] = useState<Class[]>([]);
   const [liveEvents, setLiveEvents] = useState<LiveEvent[]>([]);
-  const [loadingData, setLoadingData] = useState(true);
+  const [availableProducts, setAvailableProducts] = useState<TictoProduct[]>([]);
   
   // Modal State
   const [activeModal, setActiveModal] = useState<ModalType>(null);
@@ -60,22 +63,22 @@ const StudentAccessManager: React.FC<StudentAccessManagerProps> = ({ student: in
   useEffect(() => {
     const loadContent = async () => {
       try {
-        const [p, s, c, pc, le] = await Promise.all([
+        const [p, s, c, pc, le, prodSnap] = await Promise.all([
           getPlans(),
           getSimulatedClasses(),
           courseService.getCourses(),
           classService.getClasses(),
-          liveEventService.getLiveEvents()
+          liveEventService.getLiveEvents(),
+          getDocs(collection(db, 'ticto_products'))
         ]);
         setPlans(p);
         setSimClasses(s);
         setCourses(c);
         setPresentialClasses(pc);
         setLiveEvents(le.filter(e => e.isIsolatedProduct));
+        setAvailableProducts(prodSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as TictoProduct)));
       } catch (error) {
         console.error("Error loading content:", error);
-      } finally {
-        setLoadingData(false);
       }
     };
     loadContent();
@@ -130,6 +133,11 @@ const StudentAccessManager: React.FC<StudentAccessManagerProps> = ({ student: in
     setIsProcessing(true);
     
     try {
+      if (activeModal === 'ADD_PRODUCT') {
+        await handleGrantProduct();
+        return;
+      }
+
       let title = '';
       let type: 'plan' | 'simulated_class' | 'course' | 'presential_class' | 'live_events' = 'plan';
 
@@ -169,6 +177,102 @@ const StudentAccessManager: React.FC<StudentAccessManagerProps> = ({ student: in
     } catch (error) {
       console.error(error);
       alert("Erro ao liberar acesso.");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleGrantProduct = async () => {
+    try {
+      const product = availableProducts.find(p => p.id === selectedContentId);
+      if (!product) throw new Error("Produto não encontrado");
+
+      const batch = writeBatch(db);
+      const userRef = doc(db, 'users', localStudent.uid);
+
+      const startDate = new Date();
+      const endDate = new Date();
+      endDate.setDate(startDate.getDate() + daysInput);
+
+      const startTimestamp = Timestamp.fromDate(startDate);
+      const endTimestamp = Timestamp.fromDate(endDate);
+
+      // 1. Adiciona o Produto na lista do aluno
+      const newProductAccess: AccessItem = {
+        id: crypto.randomUUID(),
+        type: 'product',
+        targetId: product.id!,
+        title: product.name,
+        days: daysInput,
+        startDate: startTimestamp,
+        endDate: endTimestamp,
+        isActive: true
+      };
+
+      const currentProducts = localStudent.products || [];
+      const updatedProducts = [...currentProducts, newProductAccess];
+
+      // 2. Provisionamento em lote dos recursos vinculados
+      const currentAccess = [...(localStudent.access || [])];
+
+      // Helper to add access item
+      const addAccess = (type: AccessItem['type'], targetId: string, title: string) => {
+        currentAccess.push({
+          id: crypto.randomUUID(),
+          type,
+          targetId,
+          title,
+          days: daysInput,
+          startDate: startTimestamp,
+          endDate: endTimestamp,
+          isActive: true
+        });
+      };
+
+      // Linked Plans
+      if (product.linkedResources?.plans) {
+        for (const planId of product.linkedResources.plans) {
+          const plan = plans.find(p => p.id === planId);
+          if (plan) addAccess('plan', planId, plan.title);
+        }
+      }
+
+      // Linked Courses
+      if (product.linkedResources?.onlineCourses) {
+        for (const courseId of product.linkedResources.onlineCourses) {
+          const course = courses.find(c => c.id === courseId);
+          if (course) addAccess('course', courseId, course.title);
+        }
+      }
+
+      // Linked Simulated
+      if (product.linkedResources?.simulated) {
+        for (const simId of product.linkedResources.simulated) {
+          const sim = simClasses.find(s => s.id === simId);
+          if (sim) addAccess('simulated_class', simId, sim.title);
+        }
+      }
+
+      // Linked Presentials
+      if (product.linkedResources?.presentialClasses) {
+        for (const presId of product.linkedResources.presentialClasses) {
+          const pres = presentialClasses.find(p => p.id === presId);
+          if (pres) addAccess('presential_class', presId, pres.name);
+        }
+      }
+
+      batch.update(userRef, {
+        products: updatedProducts,
+        access: currentAccess
+      });
+
+      await batch.commit();
+      await fetchStudentData();
+      onUpdate();
+      closeModal();
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao liberar produto.");
     } finally {
       setIsProcessing(false);
     }
@@ -226,6 +330,7 @@ const StudentAccessManager: React.FC<StudentAccessManagerProps> = ({ student: in
   };
 
   // Filtering existing access
+  const productAccess = localStudent.products?.filter(a => a.isActive) || [];
   const planAccess = localStudent.access?.filter(a => a.type === 'plan' && a.isActive) || [];
   const simAccess = localStudent.access?.filter(a => a.type === 'simulated_class' && a.isActive) || [];
   const courseAccess = localStudent.access?.filter(a => a.type === 'course' && a.isActive) || [];
@@ -267,6 +372,41 @@ const StudentAccessManager: React.FC<StudentAccessManagerProps> = ({ student: in
         {/* Content Body */}
         <div className="flex-1 overflow-x-auto flex gap-6 pb-4 w-full snap-x custom-scrollbar">
             
+            {/* COLUMN 0: PRODUCTS (PURPLE) */}
+            <div className="flex flex-col min-w-[320px] snap-start border border-zinc-900 bg-zinc-900/10 rounded-xl overflow-hidden">
+                <div className="p-4 border-b border-zinc-900 flex items-center justify-between bg-zinc-950/50">
+                    <div className="flex items-center gap-2 text-purple-500">
+                        <Package size={18} />
+                        <span className="text-sm font-black uppercase tracking-widest">Produtos (Combos)</span>
+                    </div>
+                    <button 
+                        onClick={() => setActiveModal('ADD_PRODUCT')}
+                        className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-[10px] font-black uppercase tracking-widest rounded-lg shadow-lg shadow-purple-900/20 transition-all flex items-center gap-2"
+                    >
+                        <Plus size={12} /> Liberar Produto
+                    </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+                    {productAccess.length === 0 ? (
+                        <EmptyState text="Nenhum produto ativo" icon={Package} />
+                    ) : (
+                        productAccess.map(access => (
+                            <AccessCard 
+                                key={access.id} 
+                                access={access} 
+                                colorClass="purple"
+                                onRevoke={() => handleRequestRevoke(access)}
+                                onExtend={() => openExtendModal(access.id)}
+                                getDaysRemaining={getDaysRemaining}
+                                calculateProgress={calculateProgress}
+                                formatDate={formatDate}
+                            />
+                        ))
+                    )}
+                </div>
+            </div>
+
             {/* COLUMN 1: PLANS (RED) */}
             <div className="flex flex-col min-w-[320px] snap-start border border-zinc-900 bg-zinc-900/10 rounded-xl overflow-hidden">
                 <div className="p-4 border-b border-zinc-900 flex items-center justify-between bg-zinc-950/50">
@@ -470,7 +610,9 @@ const StudentAccessManager: React.FC<StudentAccessManagerProps> = ({ student: in
                                 <option value="">Selecione...</option>
                                 {activeModal === 'ADD_PLAN' 
                                     ? plans.map(p => <option key={p.id} value={p.id}>{p.title}</option>)
-                                    : activeModal === 'ADD_SIMULADO'
+                                    : activeModal === 'ADD_PRODUCT'
+                                        ? availableProducts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)
+                                        : activeModal === 'ADD_SIMULADO'
                                         ? simClasses.map(s => <option key={s.id} value={s.id}>{s.title}</option>)
                                         : activeModal === 'ADD_COURSE'
                                             ? courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)
@@ -573,6 +715,8 @@ const AccessCard = ({ access, colorClass, onRevoke, onExtend, getDaysRemaining, 
 
     if (colorClass === 'red') {
         colors = { border: 'border-red-600/30 hover:border-red-600/60', text: 'text-red-500', bg: 'bg-red-600', barBg: 'bg-red-900/20' };
+    } else if (colorClass === 'purple') {
+        colors = { border: 'border-purple-600/30 hover:border-purple-600/60', text: 'text-purple-400', bg: 'bg-purple-600', barBg: 'bg-purple-900/20' };
     } else if (colorClass === 'orange') {
         colors = { border: 'border-orange-500/30 hover:border-orange-500/60', text: 'text-orange-400', bg: 'bg-orange-500', barBg: 'bg-orange-900/20' };
     } else if (colorClass === 'blue') {

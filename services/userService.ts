@@ -25,8 +25,8 @@ import { db, auth as mainAuth, firebaseConfig } from './firebase';
 
 export interface AccessItem {
   id: string; // Unique ID for this specific access grant
-  type: 'plan' | 'simulated_class' | 'course' | 'presential_class' | 'live_events';
-  targetId: string; // The ID of the Plan, Simulated Class, or Course
+  type: 'plan' | 'simulated_class' | 'course' | 'presential_class' | 'live_events' | 'product';
+  targetId: string; // The ID of the Plan, Simulated Class, Course or Product
   title: string;
   days: number;
   startDate: any; // Timestamp
@@ -50,6 +50,7 @@ export interface Student {
   role: 'student';
   createdAt?: any;
   access: AccessItem[];
+  products?: AccessItem[]; // Array of products (combos) released to the user
   courses?: UserCourseAccess[]; // Separate array for Online Courses (Legacy/Alternative)
   isolatedProducts?: string[]; // Array of isolated product IDs (e.g., live events)
   
@@ -252,6 +253,7 @@ export const revokeStudentAccess = async (uid: string, accessId: string) => {
 
   const student = userSnap.data() as Student;
   const currentAccess = student.access || [];
+  const currentProducts = student.products || [];
 
   const updatedAccess = currentAccess.map(item => {
     if (item.id === accessId) {
@@ -260,7 +262,17 @@ export const revokeStudentAccess = async (uid: string, accessId: string) => {
     return item;
   });
 
-  await updateDoc(userRef, { access: updatedAccess });
+  const updatedProducts = currentProducts.map(item => {
+    if (item.id === accessId) {
+      return { ...item, isActive: false };
+    }
+    return item;
+  });
+
+  await updateDoc(userRef, { 
+    access: updatedAccess,
+    products: updatedProducts
+  });
 };
 
 export const extendStudentAccess = async (uid: string, accessId: string, additionalDays: number) => {
@@ -271,6 +283,7 @@ export const extendStudentAccess = async (uid: string, accessId: string, additio
 
   const student = userSnap.data() as Student;
   const currentAccess = student.access || [];
+  const currentProducts = student.products || [];
 
   const updatedAccess = currentAccess.map(item => {
     if (item.id === accessId) {
@@ -292,7 +305,29 @@ export const extendStudentAccess = async (uid: string, accessId: string, additio
     return item;
   });
 
-  await updateDoc(userRef, { access: updatedAccess });
+  const updatedProducts = currentProducts.map(item => {
+    if (item.id === accessId) {
+      const currentEnd = item.endDate.toDate();
+      const now = new Date();
+      const baseDate = currentEnd > now ? currentEnd : now;
+      
+      const newEnd = new Date(baseDate);
+      newEnd.setDate(newEnd.getDate() + additionalDays);
+
+      return { 
+        ...item, 
+        endDate: Timestamp.fromDate(newEnd),
+        days: item.days + additionalDays,
+        isActive: true
+      };
+    }
+    return item;
+  });
+
+  await updateDoc(userRef, { 
+    access: updatedAccess,
+    products: updatedProducts
+  });
 };
 
 // --- CURSOS ONLINE ACCESS ---
