@@ -1,5 +1,5 @@
 import * as admin from 'firebase-admin';
-import { sendWelcomeEmail } from './emailService';
+import { sendWelcomeEmail } from './emailService.js';
 
 if (!admin.apps.length) {
   try {
