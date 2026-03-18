@@ -11,7 +11,7 @@ interface AdminLiveChatProps {
 }
 
 export const AdminLiveChat: React.FC<AdminLiveChatProps> = ({ eventId }) => {
-  const { currentUser } = useAuth();
+  const { currentUser, userData } = useAuth();
   const [messages, setMessages] = useState<LiveChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -21,6 +21,14 @@ export const AdminLiveChat: React.FC<AdminLiveChatProps> = ({ eventId }) => {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const formatShortName = (fullName?: string | null) => {
+    if (!fullName) return 'Administrador';
+    const nameParts = fullName.trim().split(' ');
+    return nameParts.slice(0, 2).join(' '); // Pega apenas o 1º e 2º nome
+  };
+
+  const resolvedName = formatShortName(userData?.name || currentUser?.displayName);
 
   const handleEditSubmit = async (messageId: string) => {
     if (!editText.trim()) return;
@@ -59,9 +67,11 @@ export const AdminLiveChat: React.FC<AdminLiveChatProps> = ({ eventId }) => {
     try {
       await liveChatService.sendMessage(eventId, {
         userId: currentUser.uid,
-        userName: currentUser.displayName || 'Administrador',
-        userEmail: currentUser.email || '',
-        userPhoto: currentUser.photoURL || null,
+        userName: resolvedName,
+        senderName: resolvedName,
+        userEmail: currentUser.email || userData?.email || '',
+        userPhoto: userData?.photoUrl || currentUser.photoURL || null,
+        senderPhoto: userData?.photoUrl || currentUser.photoURL || null,
         text: newMessage.trim(),
         isAdmin: true
       });

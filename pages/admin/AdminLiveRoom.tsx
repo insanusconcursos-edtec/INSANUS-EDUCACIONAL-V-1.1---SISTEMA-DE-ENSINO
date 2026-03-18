@@ -14,22 +14,31 @@ import { useAuth } from '../../contexts/AuthContext';
 export const AdminLiveRoom: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { currentUser } = useAuth();
+  const { currentUser, userData, loading: authLoading } = useAuth();
   const [event, setEvent] = useState<LiveEvent | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [isEventLoading, setIsEventLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'chat' | 'users'>('chat');
   const [isProcessing, setIsProcessing] = useState(false);
   const [viewerCount, setViewerCount] = useState(0);
 
+  const formatShortName = (fullName?: string | null) => {
+    if (!fullName) return 'Administrador';
+    const nameParts = fullName.trim().split(' ');
+    return nameParts.slice(0, 2).join(' '); // Pega apenas o 1º e 2º nome
+  };
+
+  const resolvedName = formatShortName(userData?.name || currentUser?.displayName || currentUser?.email);
+
   // Heartbeat de Presença (Admin também conta como presente)
   useEffect(() => {
-    if (!id || !currentUser) return;
+    // A Trava: Bloqueia a execução se o contexto ainda estiver carregando os dados do Firestore
+    if (authLoading || !currentUser || !id) return;
 
     const userPresence = {
       uid: currentUser.uid,
-      name: currentUser.displayName || 'Administrador',
-      email: currentUser.email || '',
-      photoUrl: currentUser.photoURL || ''
+      name: resolvedName,
+      email: currentUser.email || userData?.email || '',
+      photoUrl: userData?.photoUrl || currentUser.photoURL || ''
     };
 
     joinLiveEvent(id, userPresence);
@@ -37,7 +46,7 @@ export const AdminLiveRoom: React.FC = () => {
     return () => {
       leaveLiveEvent(id, currentUser.uid);
     };
-  }, [id, currentUser]);
+  }, [id, currentUser, resolvedName, userData, authLoading]);
 
   // Listener de Contagem de Viewers
   useEffect(() => {
@@ -60,14 +69,14 @@ export const AdminLiveRoom: React.FC = () => {
   }, [id]);
 
   const loadEvent = async (eventId: string) => {
-    setLoading(true);
+    setIsEventLoading(true);
     try {
       const data = await liveEventService.getLiveEventById(eventId);
       setEvent(data);
     } catch (error) {
       console.error("Error loading event:", error);
     } finally {
-      setLoading(false);
+      setIsEventLoading(false);
     }
   };
 
@@ -99,7 +108,7 @@ export const AdminLiveRoom: React.FC = () => {
     }
   };
 
-  if (loading) {
+  if (isEventLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-red-600"></div>

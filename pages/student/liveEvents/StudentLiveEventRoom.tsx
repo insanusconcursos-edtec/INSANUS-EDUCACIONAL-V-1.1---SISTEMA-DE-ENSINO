@@ -14,22 +14,31 @@ import { joinLiveEvent, leaveLiveEvent } from '../../../services/liveChatService
 export const StudentLiveEventRoom: React.FC = () => {
   const { eventId } = useParams<{ eventId: string }>();
   const navigate = useNavigate();
-  const { currentUser } = useAuth();
+  const { currentUser, userData, loading: authLoading } = useAuth();
   
   const [event, setEvent] = useState<LiveEvent | null>(null);
   const [loading, setLoading] = useState(true);
   const [userIsolatedProducts, setUserIsolatedProducts] = useState<string[]>([]);
   const [viewerCount, setViewerCount] = useState(0);
 
+  const formatShortName = (fullName?: string | null) => {
+    if (!fullName) return 'Aluno';
+    const nameParts = fullName.trim().split(' ');
+    return nameParts.slice(0, 2).join(' '); // Pega apenas o 1º e 2º nome
+  };
+
+  const resolvedName = formatShortName(userData?.name || currentUser?.displayName || currentUser?.email);
+
   // Heartbeat de Presença
   useEffect(() => {
-    if (!eventId || !currentUser) return;
+    // A Trava: Bloqueia a execução se o contexto ainda estiver carregando os dados do Firestore
+    if (authLoading || !currentUser || !eventId) return;
 
     const userPresence = {
       uid: currentUser.uid,
-      name: currentUser.displayName || 'Aluno',
-      email: currentUser.email || '',
-      photoUrl: currentUser.photoURL || ''
+      name: resolvedName,
+      email: currentUser.email || userData?.email || '',
+      photoUrl: userData?.photoUrl || currentUser.photoURL || ''
     };
 
     joinLiveEvent(eventId, userPresence);
@@ -37,7 +46,7 @@ export const StudentLiveEventRoom: React.FC = () => {
     return () => {
       leaveLiveEvent(eventId, currentUser.uid);
     };
-  }, [eventId, currentUser]);
+  }, [eventId, currentUser, resolvedName, userData, authLoading]);
 
   // Listener de Usuários Online e Contagem
   useEffect(() => {
@@ -45,11 +54,6 @@ export const StudentLiveEventRoom: React.FC = () => {
 
     const presenceRef = collection(db, 'live_events', eventId, 'presence');
     const unsubscribe = onSnapshot(presenceRef, (snapshot) => {
-      const users = snapshot.docs.map(doc => ({
-        userId: doc.id,
-        ...doc.data()
-      } as LiveActiveUser));
-      setOnlineUsers(users);
       setViewerCount(snapshot.size);
     }, (error) => {
       console.error("Error listening to presence:", error);

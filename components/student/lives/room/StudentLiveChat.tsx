@@ -11,11 +11,19 @@ interface StudentLiveChatProps {
 }
 
 export const StudentLiveChat: React.FC<StudentLiveChatProps> = ({ eventId, status }) => {
-  const { currentUser } = useAuth();
+  const { currentUser, userData } = useAuth();
   const [messages, setMessages] = useState<LiveChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const formatShortName = (fullName?: string | null) => {
+    if (!fullName) return 'Aluno';
+    const nameParts = fullName.trim().split(' ');
+    return nameParts.slice(0, 2).join(' '); // Pega apenas o 1º e 2º nome
+  };
+
+  const resolvedName = formatShortName(userData?.name || currentUser?.displayName);
 
   useEffect(() => {
     if (!eventId) return;
@@ -42,9 +50,11 @@ export const StudentLiveChat: React.FC<StudentLiveChatProps> = ({ eventId, statu
     try {
       await liveChatService.sendMessage(eventId, {
         userId: currentUser.uid,
-        userName: currentUser.displayName || 'Aluno',
-        userEmail: currentUser.email || '',
-        userPhoto: currentUser.photoURL || null,
+        userName: resolvedName,
+        senderName: resolvedName,
+        userEmail: currentUser.email || userData?.email || '',
+        userPhoto: userData?.photoUrl || currentUser.photoURL || null,
+        senderPhoto: userData?.photoUrl || currentUser.photoURL || null,
         text: newMessage.trim(),
         isAdmin: false
       });

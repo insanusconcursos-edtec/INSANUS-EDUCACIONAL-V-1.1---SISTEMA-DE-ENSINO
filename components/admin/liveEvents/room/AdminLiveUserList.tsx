@@ -29,6 +29,12 @@ export const AdminLiveUserList: React.FC<AdminLiveUserListProps> = ({ eventId })
     user.userEmail.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const formatShortName = (fullName?: string | null) => {
+    if (!fullName) return 'Aluno';
+    const nameParts = fullName.trim().split(' ');
+    return nameParts.slice(0, 2).join(' '); // Pega apenas o 1º e 2º nome
+  };
+
   const handleBlockChat = async (user: LiveActiveUser) => {
     try {
       await liveChatService.blockUserChat(eventId, user.userId, !user.isChatBlocked);
@@ -101,7 +107,7 @@ export const AdminLiveUserList: React.FC<AdminLiveUserListProps> = ({ eventId })
                     </div>
                     <div className="min-w-0">
                       <p className={`text-xs font-bold truncate ${user.isBanned ? 'text-red-500 line-through' : 'text-zinc-200'}`}>
-                        {user.userName}
+                        {formatShortName(user.userName || user.userEmail)}
                       </p>
                       <p className="text-[10px] text-zinc-500 truncate">{user.userEmail}</p>
                     </div>
