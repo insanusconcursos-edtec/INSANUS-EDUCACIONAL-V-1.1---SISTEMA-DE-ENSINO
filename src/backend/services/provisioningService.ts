@@ -1,26 +1,40 @@
-import admin from 'firebase-admin';
+import * as admin from 'firebase-admin';
 import { sendWelcomeEmail } from './emailService';
 
-// Initialize Firebase Admin if not already initialized
 if (!admin.apps.length) {
-  admin.initializeApp();
+  try {
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : undefined,
+      }),
+    });
+    console.log("Firebase Admin inicializado com sucesso.");
+  } catch (error) {
+    console.error("Erro crítico na inicialização do Firebase Admin:", error);
+  }
 }
+
+const dbAdmin = admin.firestore();
+const authAdmin = admin.auth();
 
 export const provisionTictoPurchase = async (customerData: any, tictoProductId: string) => {
   try {
-    const db = admin.firestore();
-    const auth = admin.auth();
+    const safeProductId = String(tictoProductId);
+    console.log(`Iniciando provisionamento para: ${customerData.email}`);
 
     // 1. Procurar na coleção ticto_products qual o produto que possui o tictoId correspondente
-    const productsSnapshot = await db.collection('ticto_products')
-      .where('tictoId', '==', tictoProductId)
+    const productsSnapshot = await dbAdmin.collection('ticto_products')
+      .where('tictoId', '==', safeProductId)
       .limit(1)
       .get();
 
     if (productsSnapshot.empty) {
-      throw new Error(`Produto Ticto com ID ${tictoProductId} não encontrado.`);
+      throw new Error(`Produto Ticto com ID ${safeProductId} não encontrado.`);
     }
 
+    console.log(`Produto encontrado. Criando usuário no Auth...`);
     const productDoc = productsSnapshot.docs[0];
     const productData = productDoc.data();
     const accessDays = productData.accessDays || 365;
@@ -40,7 +54,7 @@ export const provisionTictoPurchase = async (customerData: any, tictoProductId: 
     let isNewUser = false;
 
     try {
-      userRecord = await auth.getUserByEmail(customerData.email);
+      userRecord = await authAdmin.getUserByEmail(customerData.email);
     } catch (error: any) {
       if (error.code === 'auth/user-not-found') {
         isNewUser = true;
@@ -63,7 +77,7 @@ export const provisionTictoPurchase = async (customerData: any, tictoProductId: 
       const generatedPassword = generatePassword();
 
       // Criar usuário no Auth
-      userRecord = await auth.createUser({
+      userRecord = await authAdmin.createUser({
         email: customerData.email,
         password: generatedPassword,
         displayName: customerData.name,
@@ -80,7 +94,7 @@ export const provisionTictoPurchase = async (customerData: any, tictoProductId: 
         access: [
           {
             productId: productDoc.id,
-            tictoId: tictoProductId,
+            tictoId: safeProductId,
             productName: productData.name,
             grantedAt: admin.firestore.FieldValue.serverTimestamp(),
             expiresAt: admin.firestore.Timestamp.fromDate(expirationDate),
@@ -89,14 +103,15 @@ export const provisionTictoPurchase = async (customerData: any, tictoProductId: 
         ]
       };
 
-      await db.collection('users').doc(userRecord.uid).set(newUserDoc);
+      await dbAdmin.collection('users').doc(userRecord.uid).set(newUserDoc);
 
       // Enviar e-mail de boas-vindas real
+      console.log(`Usuário criado. Enviando e-mail de boas-vindas...`);
       await sendWelcomeEmail(customerData.name, customerData.email, generatedPassword);
 
     } else {
       // 4. SE FOR ALUNO EXISTENTE
-      const userRef = db.collection('users').doc(userRecord.uid);
+      const userRef = dbAdmin.collection('users').doc(userRecord.uid);
       const userDoc = await userRef.get();
 
       if (!userDoc.exists) {
@@ -110,7 +125,7 @@ export const provisionTictoPurchase = async (customerData: any, tictoProductId: 
           access: [
             {
               productId: productDoc.id,
-              tictoId: tictoProductId,
+              tictoId: safeProductId,
               productName: productData.name,
               grantedAt: admin.firestore.FieldValue.serverTimestamp(),
               expiresAt: admin.firestore.Timestamp.fromDate(expirationDate),
@@ -126,7 +141,7 @@ export const provisionTictoPurchase = async (customerData: any, tictoProductId: 
 
         // Verifica se já possui o acesso ativo para não duplicar
         const hasActiveAccess = currentAccess.some((acc: any) => 
-          acc.tictoId === tictoProductId && 
+          acc.tictoId === safeProductId && 
           acc.expiresAt && 
           acc.expiresAt.toDate() > new Date()
         );
@@ -134,7 +149,7 @@ export const provisionTictoPurchase = async (customerData: any, tictoProductId: 
         if (!hasActiveAccess) {
           const newAccess = {
             productId: productDoc.id,
-            tictoId: tictoProductId,
+            tictoId: safeProductId,
             productName: productData.name,
             grantedAt: admin.firestore.FieldValue.serverTimestamp(),
             expiresAt: admin.firestore.Timestamp.fromDate(expirationDate),
@@ -146,11 +161,12 @@ export const provisionTictoPurchase = async (customerData: any, tictoProductId: 
           });
           console.log(`[PROVISIONAMENTO] Novos acessos adicionados para o usuário existente ${customerData.email}`);
         } else {
-          console.log(`[PROVISIONAMENTO] Usuário ${customerData.email} já possui acesso ativo ao produto ${tictoProductId}`);
+          console.log(`[PROVISIONAMENTO] Usuário ${customerData.email} já possui acesso ativo ao produto ${safeProductId}`);
         }
       }
     }
 
+    console.log(`Provisionamento concluído com sucesso para ${customerData.email}`);
     return { success: true, message: 'Provisionamento concluído com sucesso.' };
 
   } catch (error) {
@@ -161,23 +177,21 @@ export const provisionTictoPurchase = async (customerData: any, tictoProductId: 
 
 export const revokeTictoPurchase = async (email: string, tictoProductId: string) => {
   try {
-    const db = admin.firestore();
-    const auth = admin.auth();
-
+    const safeProductId = String(tictoProductId);
     // 1. Busca o documento do produto na coleção ticto_products para saber quais recursos ele liberava
-    const productsSnapshot = await db.collection('ticto_products')
-      .where('tictoId', '==', tictoProductId)
+    const productsSnapshot = await dbAdmin.collection('ticto_products')
+      .where('tictoId', '==', safeProductId)
       .limit(1)
       .get();
 
     if (productsSnapshot.empty) {
-      console.log(`[REVOGAÇÃO] Produto Ticto com ID ${tictoProductId} não encontrado.`);
+      console.log(`[REVOGAÇÃO] Produto Ticto com ID ${safeProductId} não encontrado.`);
     }
 
     // 2. Busca o utilizador na coleção users através do e-mail
     let userRecord;
     try {
-      userRecord = await auth.getUserByEmail(email);
+      userRecord = await authAdmin.getUserByEmail(email);
     } catch (error: any) {
       if (error.code === 'auth/user-not-found') {
         console.log(`[REVOGAÇÃO] Usuário com e-mail ${email} não encontrado no Auth.`);
@@ -186,7 +200,7 @@ export const revokeTictoPurchase = async (email: string, tictoProductId: string)
       throw error;
     }
 
-    const userRef = db.collection('users').doc(userRecord.uid);
+    const userRef = dbAdmin.collection('users').doc(userRecord.uid);
     const userDoc = await userRef.get();
 
     if (!userDoc.exists) {
@@ -200,7 +214,7 @@ export const revokeTictoPurchase = async (email: string, tictoProductId: string)
     // 3. Percorre o array access do utilizador. Para cada item de acesso que corresponda ao produto cancelado, altere a propriedade isActive para false
     let hasChanges = false;
     const updatedAccess = currentAccess.map((acc: any) => {
-      if (acc.tictoId === tictoProductId && acc.isActive !== false) {
+      if (acc.tictoId === safeProductId && acc.isActive !== false) {
         hasChanges = true;
         return { ...acc, isActive: false, revokedAt: admin.firestore.FieldValue.serverTimestamp() };
       }
@@ -210,9 +224,9 @@ export const revokeTictoPurchase = async (email: string, tictoProductId: string)
     if (hasChanges) {
       // 4. Salva o array access atualizado no documento do utilizador
       await userRef.update({ access: updatedAccess });
-      console.log(`[REVOGAÇÃO] Acessos revogados para o usuário ${email} referente ao produto ${tictoProductId}`);
+      console.log(`[REVOGAÇÃO] Acessos revogados para o usuário ${email} referente ao produto ${safeProductId}`);
     } else {
-      console.log(`[REVOGAÇÃO] Nenhum acesso ativo encontrado para revogar do usuário ${email} referente ao produto ${tictoProductId}`);
+      console.log(`[REVOGAÇÃO] Nenhum acesso ativo encontrado para revogar do usuário ${email} referente ao produto ${safeProductId}`);
     }
 
     return { success: true, message: 'Revogação concluída com sucesso.' };
