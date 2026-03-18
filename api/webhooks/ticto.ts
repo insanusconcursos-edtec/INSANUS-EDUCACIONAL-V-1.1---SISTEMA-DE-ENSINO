@@ -17,7 +17,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 2. Interceptar testes da Ticto IMEDIATAMENTE antes de carregar o backend
     if (payload.status === 'waiting_payment' || payload.item?.product_id === 1 || payload.product_id === 1) {
       console.log("Payload de teste recebido da Ticto e ignorado com segurança.");
-      return res.status(200).json({ received: true, message: "Teste Ticto aprovado com sucesso!" });
+      return res.status(200).json({ received: true });
     }
 
     // 3. Importação Estática (Garantindo resolução de path na Vercel)
@@ -53,6 +53,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (error) {
     console.error("Erro interno no Webhook da Ticto:", error);
     // Retorna 200 OBRIGATORIAMENTE para não desativar o webhook na Ticto
-    return res.status(200).json({ received: true, error: "Erro silenciado" });
+    return res.status(200).json({ received: true, error: "Erro silenciado internamente" });
   }
 }
