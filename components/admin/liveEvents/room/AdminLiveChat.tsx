@@ -140,7 +140,7 @@ export const AdminLiveChat: React.FC<AdminLiveChatProps> = ({ eventId }) => {
                     <div className="flex items-center justify-between gap-2 mb-1">
                       <div className="flex items-center gap-2">
                         <span className={`text-[10px] font-bold ${isAdmin ? 'text-red-500' : 'text-zinc-400'}`}>
-                          {isAdmin ? 'MODERADOR' : msg.userName}
+                          {isAdmin ? 'MODERADOR' : (msg.senderName || msg.userName || 'Aluno')}
                         </span>
                         <span className="text-[9px] text-zinc-600">
                           {msg.createdAt?.toDate ? msg.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}

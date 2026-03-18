@@ -38,10 +38,13 @@ export interface LiveChatMessage {
   userName: string;
   userEmail: string;
   userPhoto?: string;
+  senderName?: string;
+  senderPhoto?: string;
   text: string;
   createdAt: any;
   isDeleted?: boolean; // Para moderação (apagar mensagem)
   isAdmin?: boolean;
+  isEdited?: boolean;
 }
 
 export interface LiveActiveUser {

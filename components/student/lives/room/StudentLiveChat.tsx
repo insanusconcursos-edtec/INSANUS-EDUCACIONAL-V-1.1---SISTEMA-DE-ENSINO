@@ -93,7 +93,7 @@ export const StudentLiveChat: React.FC<StudentLiveChatProps> = ({ eventId, statu
               <div key={msg.id} className={`group flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
                 <div className={`flex items-center gap-2 mb-1 w-full ${isMine ? 'flex-row-reverse' : 'flex-row'}`}>
                   <span className={`text-[10px] font-bold ${isAdmin ? 'text-red-500' : isMine ? 'text-brand-red' : 'text-zinc-400'}`}>
-                    {isAdmin ? 'MODERADOR' : isMine ? 'VOCÊ' : msg.userName}
+                    {isAdmin ? 'MODERADOR' : isMine ? 'VOCÊ' : (msg.senderName || msg.userName || 'Aluno')}
                   </span>
                   <span className="text-[9px] text-zinc-600">
                     {msg.createdAt?.toDate ? msg.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}

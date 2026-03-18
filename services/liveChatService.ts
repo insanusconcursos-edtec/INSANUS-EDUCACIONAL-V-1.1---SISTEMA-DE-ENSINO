@@ -2,6 +2,7 @@ import {
   collection, 
   doc, 
   addDoc, 
+  setDoc,
   updateDoc, 
   deleteDoc,
   query, 
@@ -61,6 +62,8 @@ export const liveChatService = {
         ...sanitizedData,
         text: filteredText,
         eventId,
+        senderName: sanitizedData.userName || sanitizedData.senderName || 'Aluno',
+        senderPhoto: sanitizedData.userPhoto || sanitizedData.senderPhoto || '',
         createdAt: serverTimestamp(),
         isDeleted: false
       });
@@ -114,7 +117,7 @@ export const liveChatService = {
   // --- USUÁRIOS ---
   subscribeToActiveUsers: (eventId: string, callback: (users: LiveActiveUser[]) => void) => {
     const q = query(
-      collection(db, EVENTS_COLLECTION, eventId, 'active_users'),
+      collection(db, EVENTS_COLLECTION, eventId, 'presence'),
       orderBy('joinedAt', 'desc')
     );
 
@@ -129,7 +132,7 @@ export const liveChatService = {
 
   blockUserChat: async (eventId: string, userId: string, isBlocked: boolean): Promise<void> => {
     try {
-      const docRef = doc(db, EVENTS_COLLECTION, eventId, 'active_users', userId);
+      const docRef = doc(db, EVENTS_COLLECTION, eventId, 'presence', userId);
       await updateDoc(docRef, {
         isChatBlocked: isBlocked
       });
@@ -141,7 +144,7 @@ export const liveChatService = {
 
   banUserFromEvent: async (eventId: string, userId: string, isBanned: boolean): Promise<void> => {
     try {
-      const docRef = doc(db, EVENTS_COLLECTION, eventId, 'active_users', userId);
+      const docRef = doc(db, EVENTS_COLLECTION, eventId, 'presence', userId);
       await updateDoc(docRef, {
         isBanned: isBanned,
         isChatBlocked: isBanned // Banir também bloqueia o chat por segurança
@@ -151,4 +154,25 @@ export const liveChatService = {
       throw error;
     }
   }
+};
+
+export const joinLiveEvent = async (eventId: string, user: { uid: string, name: string, email: string, photoUrl?: string }) => {
+  if (!user.uid) return;
+  const presenceRef = doc(db, `live_events/${eventId}/presence`, user.uid);
+  await setDoc(presenceRef, {
+    userId: user.uid,
+    eventId: eventId,
+    userName: user.name || 'Aluno',
+    userEmail: user.email || '',
+    userPhoto: user.photoUrl || '',
+    joinedAt: new Date().toISOString(),
+    isChatBlocked: false,
+    isBanned: false
+  });
+};
+
+export const leaveLiveEvent = async (eventId: string, userId: string) => {
+  if (!userId) return;
+  const presenceRef = doc(db, `live_events/${eventId}/presence`, userId);
+  await deleteDoc(presenceRef);
 };

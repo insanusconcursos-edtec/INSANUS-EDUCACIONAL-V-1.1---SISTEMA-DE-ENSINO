@@ -6,14 +6,52 @@ import { LiveEvent } from '../../types/liveEvent';
 import { AdminLivePlayer } from '../../components/admin/liveEvents/room/AdminLivePlayer';
 import { AdminLiveChat } from '../../components/admin/liveEvents/room/AdminLiveChat';
 import { AdminLiveUserList } from '../../components/admin/liveEvents/room/AdminLiveUserList';
+import { joinLiveEvent, leaveLiveEvent } from '../../services/liveChatService';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '../../services/firebase';
+import { useAuth } from '../../contexts/AuthContext';
 
 export const AdminLiveRoom: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
   const [event, setEvent] = useState<LiveEvent | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'chat' | 'users'>('chat');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [viewerCount, setViewerCount] = useState(0);
+
+  // Heartbeat de Presença (Admin também conta como presente)
+  useEffect(() => {
+    if (!id || !currentUser) return;
+
+    const userPresence = {
+      uid: currentUser.uid,
+      name: currentUser.displayName || 'Administrador',
+      email: currentUser.email || '',
+      photoUrl: currentUser.photoURL || ''
+    };
+
+    joinLiveEvent(id, userPresence);
+
+    return () => {
+      leaveLiveEvent(id, currentUser.uid);
+    };
+  }, [id, currentUser]);
+
+  // Listener de Contagem de Viewers
+  useEffect(() => {
+    if (!id) return;
+
+    const presenceRef = collection(db, 'live_events', id, 'presence');
+    const unsubscribe = onSnapshot(presenceRef, (snapshot) => {
+      setViewerCount(snapshot.size);
+    }, (error) => {
+      console.error("Error listening to presence:", error);
+    });
+
+    return () => unsubscribe();
+  }, [id]);
 
   useEffect(() => {
     if (id) {
@@ -107,7 +145,7 @@ export const AdminLiveRoom: React.FC = () => {
               </span>
               {event.showViewers && (
                 <span className="text-zinc-400 flex items-center gap-1">
-                  <Users size={14} /> Viewers: 0
+                  <Users size={14} /> Viewers: {viewerCount}
                 </span>
               )}
             </div>

@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Users, VideoOff, FileText } from 'lucide-react';
-import { doc, onSnapshot, getDoc } from 'firebase/firestore';
+import { doc, onSnapshot, getDoc, collection } from 'firebase/firestore';
 import { db } from '../../../services/firebase';
-import { LiveEvent } from '../../../types/liveEvent';
+import { LiveEvent, LiveActiveUser } from '../../../types/liveEvent';
 import { useAuth } from '../../../contexts/AuthContext';
 import { StudentLiveChat } from '../../../components/student/lives/room/StudentLiveChat';
 import { StudentLiveWaitingRoom } from '../../../components/student/lives/room/StudentLiveWaitingRoom';
 import { AdminLivePlayer } from '../../../components/admin/liveEvents/room/AdminLivePlayer';
 import { StudentLiveRecording } from '../../../components/student/lives/room/StudentLiveRecording';
+import { joinLiveEvent, leaveLiveEvent } from '../../../services/liveChatService';
 
 export const StudentLiveEventRoom: React.FC = () => {
   const { eventId } = useParams<{ eventId: string }>();
@@ -18,6 +19,44 @@ export const StudentLiveEventRoom: React.FC = () => {
   const [event, setEvent] = useState<LiveEvent | null>(null);
   const [loading, setLoading] = useState(true);
   const [userIsolatedProducts, setUserIsolatedProducts] = useState<string[]>([]);
+  const [viewerCount, setViewerCount] = useState(0);
+
+  // Heartbeat de Presença
+  useEffect(() => {
+    if (!eventId || !currentUser) return;
+
+    const userPresence = {
+      uid: currentUser.uid,
+      name: currentUser.displayName || 'Aluno',
+      email: currentUser.email || '',
+      photoUrl: currentUser.photoURL || ''
+    };
+
+    joinLiveEvent(eventId, userPresence);
+
+    return () => {
+      leaveLiveEvent(eventId, currentUser.uid);
+    };
+  }, [eventId, currentUser]);
+
+  // Listener de Usuários Online e Contagem
+  useEffect(() => {
+    if (!eventId) return;
+
+    const presenceRef = collection(db, 'live_events', eventId, 'presence');
+    const unsubscribe = onSnapshot(presenceRef, (snapshot) => {
+      const users = snapshot.docs.map(doc => ({
+        userId: doc.id,
+        ...doc.data()
+      } as LiveActiveUser));
+      setOnlineUsers(users);
+      setViewerCount(snapshot.size);
+    }, (error) => {
+      console.error("Error listening to presence:", error);
+    });
+
+    return () => unsubscribe();
+  }, [eventId]);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -125,7 +164,7 @@ export const StudentLiveEventRoom: React.FC = () => {
                   <div className="w-1 h-1 bg-zinc-700 rounded-full"></div>
                   <div className="flex items-center gap-1 text-xs text-zinc-400">
                     <Users size={12} />
-                    <span>{event.viewersCount || 0} assistindo</span>
+                    <span>{viewerCount} assistindo</span>
                   </div>
                 </>
               )}
