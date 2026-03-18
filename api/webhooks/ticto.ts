@@ -53,10 +53,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (error) {
     console.error("Erro interno no Webhook da Ticto:", error);
     // Retorna 200 OBRIGATORIAMENTE para não desativar o webhook na Ticto
-    return res.status(200).json({ 
-      received: true, 
-      error: "Erro silenciado",
-      details: error instanceof Error ? error.message : String(error)
-    });
+    return res.status(200).json({ received: true, error: "Erro silenciado" });
   }
 }
